@@ -1,6 +1,9 @@
 package com.mycompany.mywebapp.client;
 
+import com.google.gwt.core.client.JsArray;
+import com.google.gwt.core.client.JsonUtils;
 import com.google.gwt.event.dom.client.*;
+import com.google.gwt.http.client.*;
 import com.google.gwt.i18n.client.DateTimeFormat;
 import com.google.gwt.i18n.client.NumberFormat;
 import com.google.gwt.user.client.Random;
@@ -14,6 +17,7 @@ import com.google.gwt.user.client.rpc.AsyncCallback;
 
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -21,6 +25,7 @@ import java.util.List;
  */
 public class MyWebApp implements EntryPoint {
     private static final int REFRESH_INTERVAL = 5000;
+    private static final String JSON_URL = GWT.getModuleBaseURL() + "jsonStockPrices?q=";
 
     private VerticalPanel mainPanel = new VerticalPanel();
     private FlexTable stocksFlexTable = new FlexTable();
@@ -93,7 +98,7 @@ public class MyWebApp implements EntryPoint {
             }
         });
 
-// Add styles to elements in the stock list table.
+        // Add styles to elements in the stock list table.
         stocksFlexTable.getRowFormatter().addStyleName(0, "watchListHeader");
         stocksFlexTable.addStyleName("watchList");
         stocksFlexTable.getCellFormatter().addStyleName(0, 1, "watchListNumericColumn");
@@ -101,7 +106,7 @@ public class MyWebApp implements EntryPoint {
         stocksFlexTable.getCellFormatter().addStyleName(0, 3, "watchListRemoveColumn");
     }
 
-    private void refreshWatchList() {
+    private void refreshWatchListRPC() {
         // Initialize the service proxy.
         if (stockPriceSvc == null) {
             stockPriceSvc = GWT.create(StockPriceService.class);
@@ -113,7 +118,7 @@ public class MyWebApp implements EntryPoint {
                 // If the stock code is in the list of delisted codes, display an error message.
                 String details = caught.getMessage();
                 if (caught instanceof DelistedException) {
-                    details = "Company '" + ((DelistedException)caught).getSymbol() + "' was delisted";
+                    details = "Company '" + ((DelistedException) caught).getSymbol() + "' was delisted";
                 }
 
                 errorMsgLabel.setText("Error: " + details);
@@ -121,7 +126,7 @@ public class MyWebApp implements EntryPoint {
             }
 
             public void onSuccess(StockPrice[] result) {
-                updateTable(result);
+                updateTableRPC(result);
                 // Clear any errors.
                 errorMsgLabel.setVisible(false);
             }
@@ -131,15 +136,60 @@ public class MyWebApp implements EntryPoint {
         stockPriceSvc.getPrices(stocks.toArray(new String[0]), callback);
     }
 
+    private void refreshWatchList() {
+        if (stocks.size() == 0) {
+            return;
+        }
+        String url = JSON_URL;
+        // Append watch list stock symbols to query URL.
+        Iterator<String> iter = stocks.iterator();
+        while (iter.hasNext()) {
+            url += iter.next();
+            if (iter.hasNext()) {
+                url += "+";
+            }
+        }
+        url = URL.encode(url);
+        RequestBuilder builder = new RequestBuilder(RequestBuilder.GET, url);
+        try {
+            Request request = builder.sendRequest(null, new RequestCallback() {
+                public void onError(Request request, Throwable exception) {
+                    displayError("Couldn't retrieve JSON");
+                }
+
+                public void onResponseReceived(Request request, Response response) {
+                    if (200 == response.getStatusCode()) {
+                        updateTable(JsonUtils.<JsArray<StockData>>safeEval(response.getText()));
+                    } else {
+                        displayError("Couldn't retrieve JSON (" + response.getStatusText()
+                                + ")");
+                    }
+                }
+            });
+        } catch (RequestException e) {
+            displayError("Couldn't retrieve JSON");
+        }
+    }
+
     /**
      * Update the Price and Change fields all the rows in the stock table. * * @param prices Stock data for all rows.
      */
-    private void updateTable(StockPrice[] prices) {
+    private void updateTableRPC(StockPrice[] prices) {
         for (int i = 0; i < prices.length; i++) {
-            updateTable(prices[i]);
+            updateTableRPC(prices[i]);
         }
         // Display timestamp showing last refresh.
         lastUpdatedLabel.setText("Last update : " + DateTimeFormat.getMediumDateTimeFormat().format(new Date()));
+    }
+
+    private void updateTable(JsArray<StockData> prices) {
+        for (int i = 0; i < prices.length(); i++) {
+            updateTable(prices.get(i));
+        }
+        // Display timestamp showing last refresh.
+        lastUpdatedLabel.setText("Last update : " + DateTimeFormat.getMediumDateTimeFormat().format(new Date()));
+        // Clear any errors.
+        errorMsgLabel.setVisible(false);
     }
 
 
@@ -148,25 +198,21 @@ public class MyWebApp implements EntryPoint {
      *
      * @param price Stock data for a single row.
      */
-    private void updateTable(StockPrice price) {
+    private void updateTableRPC(StockPrice price) {
         // Make sure the stock is still in the stock table.
         if (!stocks.contains(price.getSymbol())) {
             return;
         }
-
         int row = stocks.indexOf(price.getSymbol()) + 1;
-
         // Format the data in the Price and Change fields.
         String priceText = NumberFormat.getFormat("#,##0.00").format(price.getPrice());
         NumberFormat changeFormat = NumberFormat.getFormat("+#,##0.00;-#,##0.00");
         String changeText = changeFormat.format(price.getChange());
         String changePercentText = changeFormat.format(price.getChangePercent());
-
         // Populate the Price and Change fields with new data.
         stocksFlexTable.setText(row, 1, priceText);
         Label changeWidget = (Label) stocksFlexTable.getWidget(row, 2);
         changeWidget.setText(changeText + " (" + changePercentText + "%)");
-
         // Change the color of text in the Change field based on its value.
         String changeStyleName = "noChange";
         if (price.getChangePercent() < -0.1f) {
@@ -174,7 +220,31 @@ public class MyWebApp implements EntryPoint {
         } else if (price.getChangePercent() > 0.1f) {
             changeStyleName = "positiveChange";
         }
+        changeWidget.setStyleName(changeStyleName);
+    }
 
+    private void updateTable(StockData price) {
+        // Make sure the stock is still in the stock table.
+        if (!stocks.contains(price.getSymbol())) {
+            return;
+        }
+        int row = stocks.indexOf(price.getSymbol()) + 1;
+        // Format the data in the Price and Change fields.
+        String priceText = NumberFormat.getFormat("#,##0.00").format(price.getPrice());
+        NumberFormat changeFormat = NumberFormat.getFormat("+#,##0.00;-#,##0.00");
+        String changeText = changeFormat.format(price.getChange());
+        String changePercentText = changeFormat.format(price.getChangePercent());
+        // Populate the Price and Change fields with new data.
+        stocksFlexTable.setText(row, 1, priceText);
+        Label changeWidget = (Label) stocksFlexTable.getWidget(row, 2);
+        changeWidget.setText(changeText + " (" + changePercentText + "%)");
+        // Change the color of text in the Change field based on its value.
+        String changeStyleName = "noChange";
+        if (price.getChangePercent() < -0.1f) {
+            changeStyleName = "negativeChange";
+        } else if (price.getChangePercent() > 0.1f) {
+            changeStyleName = "positiveChange";
+        }
         changeWidget.setStyleName(changeStyleName);
     }
 
@@ -222,7 +292,14 @@ public class MyWebApp implements EntryPoint {
 
         // Get the stock price.
         refreshWatchList();
+    }
 
-
+    /**
+     * If can't get JSON, display error message.
+     * @param error
+     */
+    private void displayError(String error) {
+        errorMsgLabel.setText("Error: " + error);
+        errorMsgLabel.setVisible(true);
     }
 }
