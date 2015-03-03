@@ -47,6 +47,10 @@ public class MyWebApp implements EntryPoint {
      * This is the entry point method.
      */
     public void onModuleLoad() {
+        HelloGwtWidget helloGWTWidget = GWT.create(HelloGwtWidget.class);
+        RootPanel.get().add(helloGWTWidget);
+
+
         // Set the window title, the header text, and the Add button text.
         Window.setTitle(constants.stockWatcher());
         RootPanel.get("appTitle").add(new Label(constants.stockWatcher()));
