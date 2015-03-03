@@ -10,6 +10,6 @@
   <inherits name='com.mycompany.mywebapp.MyWebApp'/>
 
   <!-- Specify the path to any remote services.                   -->
-  <servlet path="/mywebapp/greet" class="com.mycompany.mywebapp.server.GreetingServiceImpl" />
+  <servlet path="/mywebapp/stockData" class="com.mycompany.mywebapp.server.StockPriceServiceImpl" />
 
 </module>

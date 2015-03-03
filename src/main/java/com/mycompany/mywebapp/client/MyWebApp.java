@@ -37,6 +37,9 @@ public class MyWebApp implements EntryPoint {
 
     private List<String> stocks = new ArrayList<String>();
 
+    private StockWatcherConstants constants = GWT.create(StockWatcherConstants.class);
+    private StockWatcherMessages messages = GWT.create(StockWatcherMessages.class);
+
     private StockPriceServiceAsync stockPriceSvc = GWT.create(StockPriceService.class);
 
 
@@ -44,6 +47,11 @@ public class MyWebApp implements EntryPoint {
      * This is the entry point method.
      */
     public void onModuleLoad() {
+        // Set the window title, the header text, and the Add button text.
+        Window.setTitle(constants.stockWatcher());
+        RootPanel.get("appTitle").add(new Label(constants.stockWatcher()));
+        addStockButton = new Button(constants.add());
+
         // Create table for stock data.
         stocksFlexTable.setText(0, 0, "Symbol");
         stocksFlexTable.setText(0, 1, "Price");
@@ -187,7 +195,7 @@ public class MyWebApp implements EntryPoint {
             updateTable(prices.get(i));
         }
         // Display timestamp showing last refresh.
-        lastUpdatedLabel.setText("Last update : " + DateTimeFormat.getMediumDateTimeFormat().format(new Date()));
+        lastUpdatedLabel.setText(messages.lastUpdate(new Date()));
         // Clear any errors.
         errorMsgLabel.setVisible(false);
     }
@@ -258,7 +266,7 @@ public class MyWebApp implements EntryPoint {
 
         // Stock code must be between 1 and 10 chars that are numbers, letters, or dots.
         if (!symbol.matches("^[0-9A-Z&#92;&#92;.]{1,10}$")) {
-            Window.alert("'" + symbol + "' is not a valid symbol.");
+            Window.alert(messages.invalidSymbol(symbol));
             newSymbolTextBox.selectAll();
             return;
         }
